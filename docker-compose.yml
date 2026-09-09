@@ -1,0 +1,12 @@
+services:
+  shredder-tspu-monitor:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: shredder-tspu-monitor:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+
