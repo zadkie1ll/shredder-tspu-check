@@ -41,7 +41,7 @@ def load_settings() -> Settings:
         checkhost_url=os.getenv("CHECKHOST_URL", "https://check-host.net").rstrip("/"),
         checkhost_type=os.getenv("CHECKHOST_TYPE", "tcp"),
         checkhost_port=_int("CHECKHOST_PORT", 443),
-        checkhost_max_nodes=_int("CHECKHOST_MAX_NODES", 10),
+        checkhost_max_nodes=_int("CHECKHOST_MAX_NODES", 50),
         checkhost_timeout_seconds=_int("CHECKHOST_TIMEOUT_SECONDS", 120),
         checkhost_poll_interval_seconds=_int("CHECKHOST_POLL_INTERVAL_SECONDS", 3),
         checkhost_failure_ratio=float(os.getenv("CHECKHOST_FAILURE_RATIO", "0.6")),
