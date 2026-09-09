@@ -49,7 +49,7 @@ def load_settings() -> Settings:
             item.strip().lower()
             for item in os.getenv(
                 "CHECKHOST_GEO_TARGETS",
-                "Romania, Bucharest|Russia, Moscow|Russia, Saint Petersburg|Serbia, Belgrade",
+                "Romania|Russia|Serbia",
             ).split("|")
             if item.strip()
         ),
