@@ -20,6 +20,7 @@ def format_alert(node, result: dict) -> str:
         f"Контрольные гео: {result['total']}\n"
         f"Таймауты: {result['failures']}\n"
         f"Connection refused: {result['service_errors']}\n"
+        f"Заблокированные гео: {', '.join(result['blocked_geo_targets']) or 'нет'}\n"
         f"Пропущенные гео: {', '.join(result['missing_geo_targets']) or 'нет'}\n"
         f"Причины: {errors}\n"
         f"Отчёт: {result['permanent_link']}"

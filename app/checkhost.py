@@ -1,5 +1,6 @@
 import asyncio
 from collections import Counter
+from collections import defaultdict
 
 import httpx
 
@@ -75,16 +76,23 @@ class CheckHostClient:
         selected_timeouts = sum(1 for item in selected if item["is_timeout"])
         selected_refused = sum(1 for item in selected if item["service_error"])
         selected_total = len(selected)
+        by_country = defaultdict(list)
+        for item in selected:
+            by_country[item["country"]].append(item)
+        blocked_countries = [
+            country for country, items in by_country.items()
+            if items and all(item["is_timeout"] for item in items)
+        ]
         missing_targets = [
             target for target in self.settings.checkhost_geo_targets
             if not any(target in item["country"].lower() for item in observations)
         ]
 
-        # A timeout from any monitored geo is a block. Refused means the IP is
-        # reachable and is therefore not a TSPU block.
+        # A country is blocked only when every probe point returned a timeout.
+        # One successful/refused probe suppresses a flaky probe timeout.
         if not selected:
             verdict = "uncertain"
-        elif selected_timeouts:
+        elif blocked_countries:
             verdict = "blocked"
         else:
             verdict = "clean"
@@ -113,6 +121,7 @@ class CheckHostClient:
             "failure_ratio": round(ratio, 3),
             "selected_geo_targets": list(self.settings.checkhost_geo_targets),
             "missing_geo_targets": missing_targets,
+            "blocked_geo_targets": blocked_countries,
             "all_observations": len(observations),
             "errors": dict(Counter(item["error"] for item in observations if item["error"])),
             "observations": observations,
