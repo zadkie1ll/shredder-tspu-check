@@ -51,11 +51,11 @@ class CheckHostClient:
             reachable = isinstance(item, dict) and (
                 not error or error.lower() in {"connection refused", "open or filtered"}
             )
-            normalized_error = error.lower() if isinstance(error, str) else "no result"
+            normalized_error = error.lower() if isinstance(error, str) else ""
             is_refused = normalized_error == "connection refused"
             is_timeout = not isinstance(item, dict) or any(
                 marker in normalized_error
-                for marker in ("timeout", "timed out", "no result")
+                for marker in ("timeout", "timed out")
             )
             observations.append({
                 "checker": checker,
