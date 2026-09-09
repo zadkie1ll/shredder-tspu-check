@@ -17,9 +17,10 @@ def format_alert(node, result: dict) -> str:
         f"Нода: {node.name}\n"
         f"IP: {node.address}\n"
         f"Проверка: {result['request_id']}\n"
-        f"Недоступны: {result['failures']}/{result['total']} ({result['failure_ratio']:.0%})\n"
-        f"Порт отклонил: {result['service_errors']}\n"
-        f"Состояние транспорта: {result['transport_state']}\n"
+        f"Контрольные гео: {result['total']}\n"
+        f"Таймауты: {result['failures']}\n"
+        f"Connection refused: {result['service_errors']}\n"
+        f"Пропущенные гео: {', '.join(result['missing_geo_targets']) or 'нет'}\n"
         f"Причины: {errors}\n"
         f"Отчёт: {result['permanent_link']}"
     )

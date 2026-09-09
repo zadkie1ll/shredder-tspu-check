@@ -51,27 +51,48 @@ class CheckHostClient:
             reachable = isinstance(item, dict) and (
                 not error or error.lower() in {"connection refused", "open or filtered"}
             )
+            normalized_error = error.lower() if isinstance(error, str) else "no result"
+            is_refused = normalized_error == "connection refused"
+            is_timeout = not isinstance(item, dict) or any(
+                marker in normalized_error
+                for marker in ("timeout", "timed out", "no result")
+            )
             observations.append({
                 "checker": checker,
                 "country": country,
                 "ok": reachable,
                 "reachable": reachable,
-                "service_error": bool(error and error.lower() == "connection refused"),
+                "service_error": is_refused,
+                "is_timeout": is_timeout,
                 "error": error,
                 "time": item.get("time") if isinstance(item, dict) else None,
             })
 
-        total = len(observations)
-        failures = sum(1 for item in observations if not item["reachable"])
-        service_errors = sum(1 for item in observations if item["service_error"])
-        ratio = failures / total if total else 1.0
-        if total == 0:
+        selected = [
+            item for item in observations
+            if any(target in item["country"].lower() for target in self.settings.checkhost_geo_targets)
+        ]
+        selected_timeouts = sum(1 for item in selected if item["is_timeout"])
+        selected_refused = sum(1 for item in selected if item["service_error"])
+        selected_total = len(selected)
+        missing_targets = [
+            target for target in self.settings.checkhost_geo_targets
+            if not any(target in item["country"].lower() for item in observations)
+        ]
+
+        # A timeout from any monitored geo is a block. Refused means the IP is
+        # reachable and is therefore not a TSPU block.
+        if not selected:
             verdict = "uncertain"
-        elif ratio >= self.settings.checkhost_failure_ratio and total >= 3:
+        elif selected_timeouts:
             verdict = "blocked"
         else:
-            # Refused proves that the IP is reachable; it is not a TSPU block.
             verdict = "clean"
+
+        total = selected_total
+        failures = selected_timeouts
+        service_errors = selected_refused
+        ratio = failures / total if total else 1.0
 
         if failures:
             transport_state = "timeout_or_network_error"
@@ -90,6 +111,9 @@ class CheckHostClient:
             "failures": failures,
             "service_errors": service_errors,
             "failure_ratio": round(ratio, 3),
+            "selected_geo_targets": list(self.settings.checkhost_geo_targets),
+            "missing_geo_targets": missing_targets,
+            "all_observations": len(observations),
             "errors": dict(Counter(item["error"] for item in observations if item["error"])),
             "observations": observations,
         }

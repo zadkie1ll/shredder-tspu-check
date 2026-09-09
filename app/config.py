@@ -22,6 +22,7 @@ class Settings:
     checkhost_timeout_seconds: int
     checkhost_poll_interval_seconds: int
     checkhost_failure_ratio: float
+    checkhost_geo_targets: tuple[str, ...]
     telegram_bot_token: str
     telegram_chat_id: str
     telegram_message_thread_id: int | None
@@ -44,6 +45,14 @@ def load_settings() -> Settings:
         checkhost_timeout_seconds=_int("CHECKHOST_TIMEOUT_SECONDS", 120),
         checkhost_poll_interval_seconds=_int("CHECKHOST_POLL_INTERVAL_SECONDS", 3),
         checkhost_failure_ratio=float(os.getenv("CHECKHOST_FAILURE_RATIO", "0.6")),
+        checkhost_geo_targets=tuple(
+            item.strip().lower()
+            for item in os.getenv(
+                "CHECKHOST_GEO_TARGETS",
+                "Romania, Bucharest|Russia, Moscow|Russia, Saint Petersburg|Serbia, Belgrade",
+            ).split("|")
+            if item.strip()
+        ),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
         telegram_message_thread_id=(
