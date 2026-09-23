@@ -3,6 +3,8 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .domain import AlertDecision, AlertKind, Verdict, normalize_verdict
+
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -13,8 +15,7 @@ class Storage:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         self.db = sqlite3.connect(path)
         self.db.row_factory = sqlite3.Row
-        self.db.execute(
-            """
+        self.db.execute("""
             CREATE TABLE IF NOT EXISTS node_state (
                 node_uuid TEXT PRIMARY KEY,
                 node_name TEXT NOT NULL,
@@ -24,8 +25,7 @@ class Storage:
                 last_result TEXT,
                 last_notified_status TEXT
             )
-            """
-        )
+            """)
         self.db.commit()
 
     def get(self, node_uuid: str):
@@ -33,13 +33,28 @@ class Storage:
             "SELECT * FROM node_state WHERE node_uuid = ?", (node_uuid,)
         ).fetchone()
 
-    def save_check(self, node, status: str, result: dict) -> bool:
+    def record_check(
+        self, node, status: str | Verdict, result: dict
+    ) -> AlertDecision | None:
+        verdict = normalize_verdict(status)
         previous = self.get(node.uuid)
         previous_status = previous["last_status"] if previous else None
         notified_status = previous["last_notified_status"] if previous else None
-        should_notify = status in {"blocked", "clean"} and status != notified_status
-        if should_notify:
-            notified_status = status
+
+        decision = None
+        if verdict == Verdict.BLOCKED and notified_status != Verdict.BLOCKED.value:
+            decision = AlertDecision(AlertKind.BLOCKED, verdict)
+        elif verdict == Verdict.CLEAN and notified_status == Verdict.BLOCKED.value:
+            decision = AlertDecision(AlertKind.RECOVERED, verdict)
+
+        # An uncertain observation must never erase the last decisive state.
+        stable_status = (
+            previous_status if verdict == Verdict.UNCERTAIN else verdict.value
+        )
+        # The first healthy observation establishes a quiet baseline. It is
+        # not a recovery notification because no outage was observed before it.
+        if previous is None and verdict == Verdict.CLEAN:
+            notified_status = Verdict.CLEAN.value
 
         self.db.execute(
             """
@@ -59,12 +74,24 @@ class Storage:
                 node.uuid,
                 node.name,
                 node.address,
-                status,
+                stable_status,
                 _now(),
                 json.dumps(result, ensure_ascii=False),
                 notified_status,
             ),
         )
         self.db.commit()
-        return should_notify
+        return decision
 
+    def mark_alert_delivered(self, node_uuid: str, status: str | Verdict) -> None:
+        verdict = normalize_verdict(status)
+        if verdict == Verdict.UNCERTAIN:
+            raise ValueError("uncertain verdict cannot be marked as notified")
+        self.db.execute(
+            "UPDATE node_state SET last_notified_status = ? WHERE node_uuid = ?",
+            (verdict.value, node_uuid),
+        )
+        self.db.commit()
+
+    def close(self) -> None:
+        self.db.close()

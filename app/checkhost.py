@@ -1,8 +1,37 @@
 import asyncio
 from collections import Counter
-from collections import defaultdict
 
 import httpx
+
+from .domain import Verdict
+
+
+def _matches(country: str, targets: tuple[str, ...]) -> bool:
+    normalized = country.lower()
+    return any(target in normalized for target in targets)
+
+
+def classify_observations(
+    observations: list[dict],
+    ru_targets: tuple[str, ...],
+    control_targets: tuple[str, ...],
+) -> tuple[Verdict, str]:
+    """Classify only evidence that distinguishes filtering from an outage."""
+    ru = [item for item in observations if _matches(item["country"], ru_targets)]
+    controls = [
+        item for item in observations if _matches(item["country"], control_targets)
+    ]
+    if not ru:
+        return Verdict.UNCERTAIN, "no_ru_probes"
+    if any(item["reachable"] for item in ru):
+        return Verdict.CLEAN, "ru_reachable"
+    if not controls:
+        return Verdict.UNCERTAIN, "no_control_probes"
+    if all(item["is_timeout"] for item in ru) and any(
+        item["reachable"] for item in controls
+    ):
+        return Verdict.BLOCKED, "ru_timeout_control_reachable"
+    return Verdict.UNCERTAIN, "insufficient_evidence"
 
 
 class CheckHostClient:
@@ -29,8 +58,12 @@ class CheckHostClient:
             result = await self._wait_for_result(client, request_id)
             return self._summarize(target, request, result)
 
-    async def _wait_for_result(self, client: httpx.AsyncClient, request_id: str) -> dict:
-        deadline = asyncio.get_running_loop().time() + self.settings.checkhost_timeout_seconds
+    async def _wait_for_result(
+        self, client: httpx.AsyncClient, request_id: str
+    ) -> dict:
+        deadline = (
+            asyncio.get_running_loop().time() + self.settings.checkhost_timeout_seconds
+        )
         last = {}
         while asyncio.get_running_loop().time() < deadline:
             response = await client.get(f"/check-result/{request_id}")
@@ -42,64 +75,51 @@ class CheckHostClient:
         return last
 
     def _summarize(self, target: str, request: dict, raw: dict) -> dict:
+        raw = raw if isinstance(raw, dict) else {}
         nodes = request.get("nodes", {})
         observations = []
-        for checker, value in raw.items():
+        for checker in dict.fromkeys([*nodes, *raw]):
+            value = raw.get(checker)
             meta = nodes.get(checker, [])
             country = meta[1] if len(meta) > 1 else meta[0] if meta else "Unknown"
             item = value[0] if isinstance(value, list) and value else None
             error = item.get("error") if isinstance(item, dict) else "No result"
-            reachable = isinstance(item, dict) and (
-                not error or error.lower() in {"connection refused", "open or filtered"}
-            )
             normalized_error = error.lower() if isinstance(error, str) else ""
             is_refused = normalized_error == "connection refused"
-            is_timeout = not isinstance(item, dict) or any(
-                marker in normalized_error
-                for marker in ("timeout", "timed out")
+            reachable = isinstance(item, dict) and (not error or is_refused)
+            is_timeout = isinstance(item, dict) and any(
+                marker in normalized_error for marker in ("timeout", "timed out")
             )
-            observations.append({
-                "checker": checker,
-                "country": country,
-                "ok": reachable,
-                "reachable": reachable,
-                "service_error": is_refused,
-                "is_timeout": is_timeout,
-                "error": error,
-                "time": item.get("time") if isinstance(item, dict) else None,
-            })
+            observations.append(
+                {
+                    "checker": checker,
+                    "country": country,
+                    "ok": reachable,
+                    "reachable": reachable,
+                    "service_error": is_refused,
+                    "is_timeout": is_timeout,
+                    "error": error,
+                    "time": item.get("time") if isinstance(item, dict) else None,
+                }
+            )
 
+        verdict, reason = classify_observations(
+            observations,
+            self.settings.checkhost_ru_targets,
+            self.settings.checkhost_control_targets,
+        )
         selected = [
-            item for item in observations
-            if any(target in item["country"].lower() for target in self.settings.checkhost_geo_targets)
+            item
+            for item in observations
+            if _matches(
+                item["country"],
+                self.settings.checkhost_ru_targets
+                + self.settings.checkhost_control_targets,
+            )
         ]
-        selected_timeouts = sum(1 for item in selected if item["is_timeout"])
-        selected_refused = sum(1 for item in selected if item["service_error"])
-        selected_total = len(selected)
-        by_country = defaultdict(list)
-        for item in selected:
-            by_country[item["country"]].append(item)
-        blocked_countries = [
-            country for country, items in by_country.items()
-            if items and all(item["is_timeout"] for item in items)
-        ]
-        missing_targets = [
-            target for target in self.settings.checkhost_geo_targets
-            if not any(target in item["country"].lower() for item in observations)
-        ]
-
-        # A country is blocked only when every probe point returned a timeout.
-        # One successful/refused probe suppresses a flaky probe timeout.
-        if not selected:
-            verdict = "uncertain"
-        elif blocked_countries:
-            verdict = "blocked"
-        else:
-            verdict = "clean"
-
-        total = selected_total
-        failures = selected_timeouts
-        service_errors = selected_refused
+        total = len(selected)
+        failures = sum(1 for item in selected if item["is_timeout"])
+        service_errors = sum(1 for item in selected if item["service_error"])
         ratio = failures / total if total else 1.0
 
         if failures:
@@ -111,7 +131,8 @@ class CheckHostClient:
 
         return {
             "target": target,
-            "verdict": verdict,
+            "verdict": verdict.value,
+            "reason": reason,
             "transport_state": transport_state,
             "request_id": request.get("request_id"),
             "permanent_link": request.get("permanent_link"),
@@ -119,10 +140,11 @@ class CheckHostClient:
             "failures": failures,
             "service_errors": service_errors,
             "failure_ratio": round(ratio, 3),
-            "selected_geo_targets": list(self.settings.checkhost_geo_targets),
-            "missing_geo_targets": missing_targets,
-            "blocked_geo_targets": blocked_countries,
+            "ru_targets": list(self.settings.checkhost_ru_targets),
+            "control_targets": list(self.settings.checkhost_control_targets),
             "all_observations": len(observations),
-            "errors": dict(Counter(item["error"] for item in observations if item["error"])),
+            "errors": dict(
+                Counter(item["error"] for item in observations if item["error"])
+            ),
             "observations": observations,
         }

@@ -1,13 +1,46 @@
-from dataclasses import dataclass
 from typing import Any
 import httpx
 
+from .domain import Node
 
-@dataclass(frozen=True)
-class Node:
-    uuid: str
-    name: str
-    address: str
+
+def _extract_node_items(payload: Any) -> list[dict]:
+    current = payload
+    for _ in range(5):
+        if isinstance(current, list):
+            return [item for item in current if isinstance(item, dict)]
+        if not isinstance(current, dict):
+            return []
+        nested = next(
+            (
+                current[key]
+                for key in ("nodes", "items", "response", "data")
+                if key in current
+            ),
+            None,
+        )
+        if nested is None or nested is current:
+            return []
+        current = nested
+    return []
+
+
+def parse_nodes(payload: Any) -> list[Node]:
+    nodes = {}
+    for raw in _extract_node_items(payload):
+        if any(raw.get(key) is True for key in ("is_disabled", "isDisabled")):
+            continue
+        address = raw.get("address") or raw.get("host") or raw.get("hostname")
+        uuid = raw.get("uuid") or raw.get("id")
+        if not uuid or not address:
+            continue
+        node = Node(
+            str(uuid),
+            str(raw.get("name") or raw.get("remark") or address),
+            str(address).strip(),
+        )
+        nodes[node.uuid] = node
+    return list(nodes.values())
 
 
 class RemnawaveClient:
@@ -20,26 +53,11 @@ class RemnawaveClient:
 
         headers = {self.settings.remnawave_auth_header: self.settings.remnawave_api_key}
         url = f"{self.settings.remnawave_url}/{self.settings.remnawave_api_path.lstrip('/')}"
-        async with httpx.AsyncClient(timeout=self.settings.request_timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self.settings.request_timeout_seconds
+        ) as client:
             response = await client.get(url, headers=headers)
             response.raise_for_status()
             payload = response.json()
 
-        if isinstance(payload, list):
-            raw_nodes = payload
-        else:
-            raw_nodes = payload.get("response", payload.get("data", payload))
-            if isinstance(raw_nodes, dict):
-                raw_nodes = raw_nodes.get("nodes", raw_nodes.get("items", []))
-
-        nodes = []
-        for raw in raw_nodes or []:
-            if not isinstance(raw, dict) or raw.get("is_disabled") is True:
-                continue
-            address = raw.get("address") or raw.get("host") or raw.get("hostname")
-            uuid = raw.get("uuid")
-            if not uuid or not address:
-                continue
-            nodes.append(Node(str(uuid), str(raw.get("name") or raw.get("remark") or address), str(address)))
-        return nodes
-
+        return parse_nodes(payload)
