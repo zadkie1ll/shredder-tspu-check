@@ -12,7 +12,7 @@ class FakeRemnawave:
 
 
 class FakeCheckHost:
-    async def check(self, _address):
+    async def check(self, _address, _port=None):
         return {
             "verdict": "blocked",
             "reason": "ru_timeout_control_reachable",
@@ -32,10 +32,26 @@ class FakeStorage:
 
     def record_check(self, node, verdict, _result):
         self.recorded.append((node.uuid, verdict))
+        if verdict == Verdict.UNCERTAIN:
+            return None
         return AlertDecision(AlertKind.BLOCKED, verdict)
 
     def mark_alert_delivered(self, node_uuid, status):
         self.delivered.append((node_uuid, status))
+
+
+class FakeAtlas:
+    async def check(self, _node):
+        return {
+            "verdict": "blocked",
+            "reason": "ripe_tls_blocked",
+            "errors": {},
+            "request_id": "ripe:1",
+            "total": 5,
+            "failures": 4,
+            "service_errors": 0,
+            "permanent_link": "https://atlas.ripe.net/measurements/1/",
+        }
 
 
 class ServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -44,7 +60,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         settings = SimpleNamespace(check_concurrency=2)
         with patch("app.service.send_alert", new=AsyncMock()) as sender:
             summary = await check_all(
-                settings, FakeRemnawave(), FakeCheckHost(), storage
+                settings, FakeRemnawave(), FakeCheckHost(), FakeAtlas(), storage
             )
         self.assertEqual(summary, {"blocked": 2, "nodes": 2})
         self.assertEqual(len(storage.recorded), 2)
@@ -59,7 +75,18 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(side_effect=RuntimeError("telegram unavailable")),
         ):
             summary = await check_all(
-                settings, FakeRemnawave(), FakeCheckHost(), storage
+                settings, FakeRemnawave(), FakeCheckHost(), FakeAtlas(), storage
             )
         self.assertEqual(summary["blocked"], 2)
         self.assertEqual(storage.delivered, [])
+
+    async def test_checkhost_suspicion_without_atlas_is_not_an_alert(self):
+        storage = FakeStorage()
+        settings = SimpleNamespace(check_concurrency=2)
+        with patch("app.service.send_alert", new=AsyncMock()) as sender:
+            summary = await check_all(
+                settings, FakeRemnawave(), FakeCheckHost(), None, storage
+            )
+        self.assertEqual(summary, {"uncertain": 2, "nodes": 2})
+        self.assertEqual(storage.delivered, [])
+        sender.assert_not_awaited()

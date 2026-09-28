@@ -21,6 +21,8 @@ class Node:
     uuid: str
     name: str
     address: str
+    port: int = 443
+    server_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

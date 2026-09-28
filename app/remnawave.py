@@ -34,10 +34,37 @@ def parse_nodes(payload: Any) -> list[Node]:
         uuid = raw.get("uuid") or raw.get("id")
         if not uuid or not address:
             continue
+        port = raw.get("port") or 443
+        server_names = []
+        profile = raw.get("configProfile") or raw.get("config_profile") or {}
+        inbounds = profile.get("activeInbounds") or profile.get("active_inbounds") or []
+        for inbound in inbounds:
+            if not isinstance(inbound, dict):
+                continue
+            raw_inbound = inbound.get("rawInbound") or inbound.get("raw_inbound") or {}
+            candidate_port = raw_inbound.get("port") or inbound.get("port")
+            if candidate_port:
+                port = candidate_port
+            stream = raw_inbound.get("streamSettings") or raw_inbound.get("stream_settings") or {}
+            reality = stream.get("realitySettings") or stream.get("reality_settings") or {}
+            names = reality.get("serverNames") or reality.get("server_names") or []
+            if isinstance(names, str):
+                names = [names]
+            server_names.extend(str(name).strip() for name in names if str(name).strip())
+
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            port = 443
+        if not 0 < port < 65536:
+            port = 443
+
         node = Node(
             str(uuid),
             str(raw.get("name") or raw.get("remark") or address),
             str(address).strip(),
+            port,
+            tuple(dict.fromkeys(server_names)),
         )
         nodes[node.uuid] = node
     return list(nodes.values())

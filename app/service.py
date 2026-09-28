@@ -5,6 +5,7 @@ from collections import Counter
 from .checkhost import CheckHostClient
 from .domain import AlertKind, Verdict
 from .remnawave import RemnawaveClient
+from .ripe_atlas import RipeAtlasClient
 from .storage import Storage
 from .telegram import send_alert
 
@@ -32,11 +33,24 @@ def format_alert(node, result: dict, kind: AlertKind) -> str:
     )
 
 
-async def _check_node(node, checkhost, storage, settings, semaphore) -> Verdict:
+async def _check_node(node, checkhost, atlas, storage, settings, semaphore) -> Verdict:
     async with semaphore:
         try:
-            result = await checkhost.check(node.address)
+            result = await checkhost.check(node.address, node.port)
             verdict = Verdict(result["verdict"])
+            # Check-Host supplies the external-control proof. RIPE Atlas is a
+            # paid confirmation only for suspected Russian-side blocking.
+            if verdict == Verdict.BLOCKED:
+                if atlas is None:
+                    result = dict(result)
+                    result.update(
+                        verdict=Verdict.UNCERTAIN.value,
+                        reason="ripe_atlas_not_configured",
+                    )
+                    verdict = Verdict.UNCERTAIN
+                else:
+                    result = await atlas.check(node)
+                    verdict = Verdict(result["verdict"])
             decision = storage.record_check(node, verdict, result)
             log.info(
                 "node=%s address=%s verdict=%s reason=%s",
@@ -62,12 +76,15 @@ async def _check_node(node, checkhost, storage, settings, semaphore) -> Verdict:
             return Verdict.UNCERTAIN
 
 
-async def check_all(settings, rw, checkhost, storage) -> dict[str, int]:
+async def check_all(settings, rw, checkhost, atlas, storage) -> dict[str, int]:
     nodes = await rw.list_nodes()
     log.info("loaded %d active nodes from Remnawave", len(nodes))
     semaphore = asyncio.Semaphore(settings.check_concurrency)
     verdicts = await asyncio.gather(
-        *(_check_node(node, checkhost, storage, settings, semaphore) for node in nodes)
+        *(
+            _check_node(node, checkhost, atlas, storage, settings, semaphore)
+            for node in nodes
+        )
     )
     summary = Counter(verdict.value for verdict in verdicts)
     summary["nodes"] = len(nodes)
@@ -78,11 +95,12 @@ async def check_all(settings, rw, checkhost, storage) -> dict[str, int]:
 async def run(settings) -> None:
     rw = RemnawaveClient(settings)
     checkhost = CheckHostClient(settings)
+    atlas = RipeAtlasClient(settings) if settings.ripe_atlas_api_key else None
     storage = Storage(settings.database_path)
     try:
         while True:
             try:
-                await check_all(settings, rw, checkhost, storage)
+                await check_all(settings, rw, checkhost, atlas, storage)
             except asyncio.CancelledError:
                 raise
             except Exception:

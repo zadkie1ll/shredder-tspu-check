@@ -43,6 +43,12 @@ class Settings:
     checkhost_poll_interval_seconds: int
     checkhost_ru_targets: tuple[str, ...]
     checkhost_control_targets: tuple[str, ...]
+    ripe_atlas_url: str
+    ripe_atlas_api_key: str
+    ripe_atlas_timeout_seconds: int
+    ripe_atlas_poll_interval_seconds: int
+    ripe_atlas_min_results: int
+    ripe_atlas_daily_budget: int
     check_concurrency: int
     telegram_bot_token: str
     telegram_chat_id: str
@@ -70,6 +76,10 @@ class Settings:
             ("CHECK_INTERVAL_SECONDS", self.check_interval_seconds),
             ("REQUEST_TIMEOUT_SECONDS", self.request_timeout_seconds),
             ("CHECK_CONCURRENCY", self.check_concurrency),
+            ("RIPE_ATLAS_TIMEOUT_SECONDS", self.ripe_atlas_timeout_seconds),
+            ("RIPE_ATLAS_POLL_INTERVAL_SECONDS", self.ripe_atlas_poll_interval_seconds),
+            ("RIPE_ATLAS_MIN_RESULTS", self.ripe_atlas_min_results),
+            ("RIPE_ATLAS_DAILY_BUDGET", self.ripe_atlas_daily_budget),
         ):
             if value <= 0:
                 errors.append(f"{name} must be positive")
@@ -95,6 +105,14 @@ def load_settings() -> Settings:
         checkhost_poll_interval_seconds=_int("CHECKHOST_POLL_INTERVAL_SECONDS", 3),
         checkhost_ru_targets=_list("CHECKHOST_RU_TARGETS", "Russia"),
         checkhost_control_targets=_list("CHECKHOST_CONTROL_TARGETS", "Romania|Serbia"),
+        ripe_atlas_url=os.getenv(
+            "RIPE_ATLAS_URL", "https://atlas.ripe.net/api/v2"
+        ).rstrip("/"),
+        ripe_atlas_api_key=os.getenv("RIPE_ATLAS_API_KEY", ""),
+        ripe_atlas_timeout_seconds=_int("RIPE_ATLAS_TIMEOUT_SECONDS", 240),
+        ripe_atlas_poll_interval_seconds=_int("RIPE_ATLAS_POLL_INTERVAL_SECONDS", 10),
+        ripe_atlas_min_results=_int("RIPE_ATLAS_MIN_RESULTS", 5),
+        ripe_atlas_daily_budget=_int("RIPE_ATLAS_DAILY_BUDGET", 55000),
         check_concurrency=_int("CHECK_CONCURRENCY", 5),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),

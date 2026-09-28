@@ -38,8 +38,8 @@ class CheckHostClient:
     def __init__(self, settings):
         self.settings = settings
 
-    async def check(self, address: str) -> dict:
-        target = f"{address}:{self.settings.checkhost_port}"
+    async def check(self, address: str, port: int | None = None) -> dict:
+        target = f"{address}:{port or self.settings.checkhost_port}"
         timeout = httpx.Timeout(self.settings.request_timeout_seconds)
         async with httpx.AsyncClient(
             base_url=self.settings.checkhost_url,

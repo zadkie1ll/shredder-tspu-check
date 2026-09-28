@@ -42,3 +42,27 @@ class RemnawavePayloadTests(unittest.TestCase):
         )
         self.assertEqual(len(nodes), 1)
         self.assertEqual(nodes[0].address, "192.0.2.2")
+
+    def test_reality_sni_and_port_are_extracted_without_private_material(self):
+        nodes = parse_nodes([
+            {
+                "uuid": "node-1",
+                "address": "192.0.2.1",
+                "configProfile": {
+                    "activeInbounds": [{
+                        "rawInbound": {
+                            "port": 8443,
+                            "streamSettings": {
+                                "realitySettings": {
+                                    "serverNames": ["example.com", "www.example.com"],
+                                    "privateKey": "must-not-be-copied",
+                                }
+                            },
+                        }
+                    }]
+                },
+            }
+        ])
+        self.assertEqual(nodes[0].port, 8443)
+        self.assertEqual(nodes[0].server_names, ("example.com", "www.example.com"))
+        self.assertNotIn("must-not-be-copied", repr(nodes[0]))
