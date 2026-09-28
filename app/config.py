@@ -21,28 +21,12 @@ def _bool(name: str, default: bool) -> bool:
     raise ValueError(f"{name} must be a boolean")
 
 
-def _list(name: str, default: str) -> tuple[str, ...]:
-    return tuple(
-        item.strip().lower()
-        for item in os.getenv(name, default).split("|")
-        if item.strip()
-    )
-
-
 @dataclass(frozen=True)
 class Settings:
     remnawave_url: str
     remnawave_api_path: str
     remnawave_api_key: str
     remnawave_auth_header: str
-    checkhost_url: str
-    checkhost_type: str
-    checkhost_port: int
-    checkhost_max_nodes: int
-    checkhost_timeout_seconds: int
-    checkhost_poll_interval_seconds: int
-    checkhost_ru_targets: tuple[str, ...]
-    checkhost_control_targets: tuple[str, ...]
     ripe_atlas_url: str
     ripe_atlas_api_key: str
     ripe_atlas_timeout_seconds: int
@@ -66,14 +50,7 @@ class Settings:
             errors.append("REMNAWAVE_URL is required")
         if not self.remnawave_api_key:
             errors.append("REMNAWAVE_API_KEY is required")
-        if not 0 < self.checkhost_port < 65536:
-            errors.append("CHECKHOST_PORT must be between 1 and 65535")
-        if self.checkhost_type != "tcp":
-            errors.append("CHECKHOST_TYPE must be tcp")
         for name, value in (
-            ("CHECKHOST_MAX_NODES", self.checkhost_max_nodes),
-            ("CHECKHOST_TIMEOUT_SECONDS", self.checkhost_timeout_seconds),
-            ("CHECKHOST_POLL_INTERVAL_SECONDS", self.checkhost_poll_interval_seconds),
             ("CHECK_INTERVAL_SECONDS", self.check_interval_seconds),
             ("REQUEST_TIMEOUT_SECONDS", self.request_timeout_seconds),
             ("CHECK_CONCURRENCY", self.check_concurrency),
@@ -84,10 +61,6 @@ class Settings:
         ):
             if value <= 0:
                 errors.append(f"{name} must be positive")
-        if not self.checkhost_ru_targets:
-            errors.append("CHECKHOST_RU_TARGETS must not be empty")
-        if not self.checkhost_control_targets:
-            errors.append("CHECKHOST_CONTROL_TARGETS must not be empty")
         if errors:
             raise ValueError("; ".join(errors))
 
@@ -98,14 +71,6 @@ def load_settings() -> Settings:
         remnawave_api_path=os.getenv("REMNAWAVE_API_PATH", "/api/nodes"),
         remnawave_api_key=os.getenv("REMNAWAVE_API_KEY", ""),
         remnawave_auth_header=os.getenv("REMNAWAVE_AUTH_HEADER", "X-API-Key"),
-        checkhost_url=os.getenv("CHECKHOST_URL", "https://check-host.net").rstrip("/"),
-        checkhost_type=os.getenv("CHECKHOST_TYPE", "tcp"),
-        checkhost_port=_int("CHECKHOST_PORT", 443),
-        checkhost_max_nodes=_int("CHECKHOST_MAX_NODES", 50),
-        checkhost_timeout_seconds=_int("CHECKHOST_TIMEOUT_SECONDS", 120),
-        checkhost_poll_interval_seconds=_int("CHECKHOST_POLL_INTERVAL_SECONDS", 3),
-        checkhost_ru_targets=_list("CHECKHOST_RU_TARGETS", "Russia"),
-        checkhost_control_targets=_list("CHECKHOST_CONTROL_TARGETS", "Romania|Serbia"),
         ripe_atlas_url=os.getenv(
             "RIPE_ATLAS_URL", "https://atlas.ripe.net/api/v2"
         ).rstrip("/"),
