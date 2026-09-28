@@ -1,7 +1,7 @@
 import httpx
 
 
-async def send_alert(settings, text: str) -> None:
+async def send_message(settings, text: str) -> None:
     if not settings.telegram_bot_token or not settings.telegram_chat_id:
         raise RuntimeError("TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are required")
     url = f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage"

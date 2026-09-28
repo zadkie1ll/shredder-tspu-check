@@ -11,11 +11,6 @@ class Verdict(StrEnum):
     UNCERTAIN = "uncertain"
 
 
-class AlertKind(StrEnum):
-    BLOCKED = "blocked"
-    RECOVERED = "recovered"
-
-
 @dataclass(frozen=True)
 class Node:
     uuid: str
@@ -23,12 +18,6 @@ class Node:
     address: str
     port: int = 443
     server_names: tuple[str, ...] = ()
-
-
-@dataclass(frozen=True)
-class AlertDecision:
-    kind: AlertKind
-    status: Verdict
 
 
 def normalize_verdict(value: str | Verdict) -> Verdict:
