@@ -115,7 +115,7 @@ def load_settings() -> Settings:
         ripe_atlas_min_results=_int("RIPE_ATLAS_MIN_RESULTS", 5),
         ripe_atlas_daily_budget=_int("RIPE_ATLAS_DAILY_BUDGET", 60000),
         ripe_atlas_light_mode=_bool("RIPE_ATLAS_LIGHT_MODE", True),
-        check_concurrency=_int("CHECK_CONCURRENCY", 5),
+        check_concurrency=_int("CHECK_CONCURRENCY", 12),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
         telegram_message_thread_id=(
