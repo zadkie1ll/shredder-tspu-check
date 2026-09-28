@@ -49,6 +49,7 @@ class Settings:
     ripe_atlas_poll_interval_seconds: int
     ripe_atlas_min_results: int
     ripe_atlas_daily_budget: int
+    ripe_atlas_light_mode: bool
     check_concurrency: int
     telegram_bot_token: str
     telegram_chat_id: str
@@ -112,7 +113,8 @@ def load_settings() -> Settings:
         ripe_atlas_timeout_seconds=_int("RIPE_ATLAS_TIMEOUT_SECONDS", 240),
         ripe_atlas_poll_interval_seconds=_int("RIPE_ATLAS_POLL_INTERVAL_SECONDS", 10),
         ripe_atlas_min_results=_int("RIPE_ATLAS_MIN_RESULTS", 5),
-        ripe_atlas_daily_budget=_int("RIPE_ATLAS_DAILY_BUDGET", 55000),
+        ripe_atlas_daily_budget=_int("RIPE_ATLAS_DAILY_BUDGET", 60000),
+        ripe_atlas_light_mode=_bool("RIPE_ATLAS_LIGHT_MODE", True),
         check_concurrency=_int("CHECK_CONCURRENCY", 5),
         telegram_bot_token=os.getenv("TELEGRAM_BOT_TOKEN", ""),
         telegram_chat_id=os.getenv("TELEGRAM_CHAT_ID", ""),
@@ -121,7 +123,7 @@ def load_settings() -> Settings:
             if os.getenv("TELEGRAM_MESSAGE_THREAD_ID")
             else None
         ),
-        check_interval_seconds=_int("CHECK_INTERVAL_SECONDS", 900),
+        check_interval_seconds=_int("CHECK_INTERVAL_SECONDS", 3600),
         request_timeout_seconds=_int("REQUEST_TIMEOUT_SECONDS", 20),
         database_path=os.getenv("DATABASE_PATH", "./data/tspu-monitor.sqlite3"),
         log_level=os.getenv("LOG_LEVEL", "INFO"),

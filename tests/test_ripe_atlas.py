@@ -1,7 +1,14 @@
 import unittest
 
 from app.domain import Node
-from app.ripe_atlas import build_measurement_payload, summarize_results
+from app.ripe_atlas import (
+    STAGE_TCP_FAIL,
+    STAGE_TCP_REFUSED,
+    STAGE_TLS_FAIL,
+    build_measurement_payload,
+    classify_stage,
+    summarize_results,
+)
 
 
 class RipeAtlasTests(unittest.TestCase):
@@ -41,3 +48,16 @@ class RipeAtlasTests(unittest.TestCase):
         result = summarize_results(rows, minimum_results=5)
         self.assertEqual(result["verdict"], "clean")
         self.assertEqual(result["availability"], 70)
+
+    def test_failure_stage_matches_monkey_island_rules(self):
+        self.assertEqual(
+            classify_stage({"err": "connect timeout"}, False), STAGE_TCP_FAIL
+        )
+        self.assertEqual(
+            classify_stage({"err": "connection refused"}, False),
+            STAGE_TCP_REFUSED,
+        )
+        self.assertEqual(
+            classify_stage({"err": "read timeout", "ttc": 14}, False),
+            STAGE_TLS_FAIL,
+        )

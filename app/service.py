@@ -2,7 +2,6 @@ import asyncio
 import logging
 from collections import Counter
 
-from .checkhost import CheckHostClient
 from .domain import AlertKind, Verdict
 from .remnawave import RemnawaveClient
 from .ripe_atlas import RipeAtlasClient
@@ -33,24 +32,25 @@ def format_alert(node, result: dict, kind: AlertKind) -> str:
     )
 
 
-async def _check_node(node, checkhost, atlas, storage, settings, semaphore) -> Verdict:
+async def _check_node(node, atlas, storage, settings, semaphore) -> Verdict:
     async with semaphore:
         try:
-            result = await checkhost.check(node.address, node.port)
+            if atlas is None:
+                result = {
+                    "verdict": Verdict.UNCERTAIN.value,
+                    "reason": "ripe_atlas_not_configured",
+                    "errors": {},
+                    "request_id": "ripe:not-created",
+                    "total": 0,
+                    "failures": 0,
+                    "service_errors": 0,
+                    "permanent_link": "",
+                }
+            else:
+                # RIPE Atlas is the primary source, as in Monkey Island.
+                # Check-Host no longer gates or changes this measurement.
+                result = await atlas.check(node)
             verdict = Verdict(result["verdict"])
-            # Check-Host supplies the external-control proof. RIPE Atlas is a
-            # paid confirmation only for suspected Russian-side blocking.
-            if verdict == Verdict.BLOCKED:
-                if atlas is None:
-                    result = dict(result)
-                    result.update(
-                        verdict=Verdict.UNCERTAIN.value,
-                        reason="ripe_atlas_not_configured",
-                    )
-                    verdict = Verdict.UNCERTAIN
-                else:
-                    result = await atlas.check(node)
-                    verdict = Verdict(result["verdict"])
             decision = storage.record_check(node, verdict, result)
             log.info(
                 "node=%s address=%s verdict=%s reason=%s",
@@ -76,13 +76,13 @@ async def _check_node(node, checkhost, atlas, storage, settings, semaphore) -> V
             return Verdict.UNCERTAIN
 
 
-async def check_all(settings, rw, checkhost, atlas, storage) -> dict[str, int]:
+async def check_all(settings, rw, atlas, storage) -> dict[str, int]:
     nodes = await rw.list_nodes()
     log.info("loaded %d active nodes from Remnawave", len(nodes))
     semaphore = asyncio.Semaphore(settings.check_concurrency)
     verdicts = await asyncio.gather(
         *(
-            _check_node(node, checkhost, atlas, storage, settings, semaphore)
+            _check_node(node, atlas, storage, settings, semaphore)
             for node in nodes
         )
     )
@@ -94,13 +94,12 @@ async def check_all(settings, rw, checkhost, atlas, storage) -> dict[str, int]:
 
 async def run(settings) -> None:
     rw = RemnawaveClient(settings)
-    checkhost = CheckHostClient(settings)
     atlas = RipeAtlasClient(settings) if settings.ripe_atlas_api_key else None
     storage = Storage(settings.database_path)
     try:
         while True:
             try:
-                await check_all(settings, rw, checkhost, atlas, storage)
+                await check_all(settings, rw, atlas, storage)
             except asyncio.CancelledError:
                 raise
             except Exception:

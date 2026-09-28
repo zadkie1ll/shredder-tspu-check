@@ -11,20 +11,6 @@ class FakeRemnawave:
         return [Node("1", "RU-1", "192.0.2.1"), Node("2", "RU-2", "192.0.2.2")]
 
 
-class FakeCheckHost:
-    async def check(self, _address, _port=None):
-        return {
-            "verdict": "blocked",
-            "reason": "ru_timeout_control_reachable",
-            "errors": {},
-            "request_id": "check-1",
-            "total": 2,
-            "failures": 1,
-            "service_errors": 0,
-            "permanent_link": "https://example.test/check-1",
-        }
-
-
 class FakeStorage:
     def __init__(self):
         self.recorded = []
@@ -60,7 +46,7 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
         settings = SimpleNamespace(check_concurrency=2)
         with patch("app.service.send_alert", new=AsyncMock()) as sender:
             summary = await check_all(
-                settings, FakeRemnawave(), FakeCheckHost(), FakeAtlas(), storage
+                settings, FakeRemnawave(), FakeAtlas(), storage
             )
         self.assertEqual(summary, {"blocked": 2, "nodes": 2})
         self.assertEqual(len(storage.recorded), 2)
@@ -75,17 +61,17 @@ class ServiceTests(unittest.IsolatedAsyncioTestCase):
             new=AsyncMock(side_effect=RuntimeError("telegram unavailable")),
         ):
             summary = await check_all(
-                settings, FakeRemnawave(), FakeCheckHost(), FakeAtlas(), storage
+                settings, FakeRemnawave(), FakeAtlas(), storage
             )
         self.assertEqual(summary["blocked"], 2)
         self.assertEqual(storage.delivered, [])
 
-    async def test_checkhost_suspicion_without_atlas_is_not_an_alert(self):
+    async def test_missing_atlas_is_not_an_alert(self):
         storage = FakeStorage()
         settings = SimpleNamespace(check_concurrency=2)
         with patch("app.service.send_alert", new=AsyncMock()) as sender:
             summary = await check_all(
-                settings, FakeRemnawave(), FakeCheckHost(), None, storage
+                settings, FakeRemnawave(), None, storage
             )
         self.assertEqual(summary, {"uncertain": 2, "nodes": 2})
         self.assertEqual(storage.delivered, [])
